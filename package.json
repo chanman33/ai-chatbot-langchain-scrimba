@@ -1,0 +1,16 @@
+{
+  "name": "project",
+  "dependencies": {
+    "langchain": "0.0.152",
+    "@supabase/supabase-js": "2.36.0"
+  },
+  "devDependencies": {
+    "vite": "latest"
+  },
+  "scripts": {
+    "start": "vite",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  }
+}
