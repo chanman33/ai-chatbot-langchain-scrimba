@@ -25,5 +25,38 @@ export class SupabaseService {
         }
     }
 
+    async checkExistingChunk(index) {
+        const { data: existingChunk } = await this.client
+            .from('documents')
+            .select('id')
+            .eq('metadata->chunkIndex', index)
+            .maybeSingle()
+        
+        return existingChunk
+    }
+
+    async insertChunk(processedChunk, index) {
+        return await this.client
+            .from('documents')
+            .insert([{
+                content: processedChunk.content,
+                metadata: {
+                    source: 'scrimba-info.txt',
+                    chunkIndex: index,
+                    length: processedChunk.content.length,
+                    timestamp: new Date().toISOString()
+                },
+                embedding: processedChunk.embedding
+            }])
+    }
+
+    async getDocumentCount() {
+        const { count } = await this.client
+            .from('documents')
+            .select('*', { count: 'exact', head: true })
+        
+        return count
+    }
+
     // Add other Supabase-related methods here
 }

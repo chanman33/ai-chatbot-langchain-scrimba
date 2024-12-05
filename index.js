@@ -153,14 +153,7 @@ class App {
     async getTextFileInfo() {
         const response = await fetch('./scrimba-info.txt')
         const text = await response.text()
-        // Configure text splitter for chunking the document
-        const splitter = new RecursiveCharacterTextSplitter({
-            chunkSize: 500,
-            separators: ['\n\n', '\n', ' ', ''],
-            chunkOverlap: 50
-        })
-        const expectedChunks = (await splitter.createDocuments([text])).length
-
+        const expectedChunks = await this.openAIService.getExpectedChunks(text)
         return { expectedChunks, text }
     }
 
@@ -204,25 +197,16 @@ class App {
             const response = await fetch('./scrimba-info.txt')
             const text = await response.text()
 
-            // Configure text splitter
-            const splitter = new RecursiveCharacterTextSplitter({
-                chunkSize: 500,
-                separators: ['\n\n', '\n', ' ', ''],
-                chunkOverlap: 50
-            })
-
-            // Split text into chunks
-            const documentChunks = await splitter.createDocuments([text])
+            // Split text into chunks using OpenAIService
+            const documentChunks = await this.openAIService.createDocumentChunks(text)
             const totalChunks = documentChunks.length
 
             if (lastProcessedIndex >= 0) {
                 processedCount = lastProcessedIndex + 1
             }
 
-            // Update processing status
             this.dispatchProcessingUpdate(processedCount, totalChunks, lastProcessedIndex >= 0)
 
-            // Process each chunk
             for (let i = lastProcessedIndex + 1; i < documentChunks.length; i++) {
                 const chunk = documentChunks[i]
                 await this.processChunk(chunk, i)
@@ -244,39 +228,19 @@ class App {
      */
     async processChunk(chunk, index) {
         try {
-            // Add delay between chunks to prevent rate limiting
             if (index > 0) {
                 await new Promise(resolve => setTimeout(resolve, 2000))
             }
 
-            // Check if chunk already exists
-            const { data: existingChunk } = await this.supabaseService.client
-                .from('documents')
-                .select('id')
-                .eq('metadata->chunkIndex', index)
-                .maybeSingle()
+            const existingChunk = await this.supabaseService.checkExistingChunk(index)
 
             if (existingChunk) {
                 console.log(`Chunk ${index} already exists, skipping...`)
                 return
             }
 
-            // Generate embedding for the chunk
-            const embedding = await this.openAIService.generateEmbedding(chunk.pageContent)
-
-            // Store chunk and embedding in database
-            await this.supabaseService.client
-                .from('documents')
-                .insert([{
-                    content: chunk.pageContent,
-                    metadata: {
-                        source: 'scrimba-info.txt',
-                        chunkIndex: index,
-                        length: chunk.pageContent.length,
-                        timestamp: new Date().toISOString()
-                    },
-                    embedding: embedding
-                }])
+            const processedChunk = await this.openAIService.processChunk(chunk)
+            await this.supabaseService.insertChunk(processedChunk, index)
 
         } catch (error) {
             console.error(`Error processing chunk ${index}:`, error)
@@ -289,13 +253,9 @@ class App {
      * @returns {boolean} Whether processing is complete
      */
     async verifyProcessing(totalChunks) {
-        const { count: finalCount } = await this.supabaseService.client
-            .from('documents')
-            .select('*', { count: 'exact', head: true })
-
+        const finalCount = await this.supabaseService.getDocumentCount()
         const isComplete = finalCount === totalChunks
         console.log(`Processing ${isComplete ? 'complete' : 'incomplete'}. Processed ${finalCount}/${totalChunks} chunks`)
-
         return isComplete
     }
 
@@ -355,6 +315,5 @@ class App {
         return speechBubble
     }
 }
-
 // Create an instance of the App class to start the application
 new App()
